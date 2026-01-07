@@ -8,6 +8,7 @@ from datetime import datetime
 import json
 from itertools import chain
 from pyspark.sql.functions import create_map, lit
+
 def create_spark_session():
     return (SparkSession.builder
             .appName("FlightDataProcessor")
@@ -22,6 +23,7 @@ def create_spark_session():
             .getOrCreate())
 
 spark = create_spark_session()
+
 with open('iata_code/airport.json','r',encoding = 'utf-8') as f:
     airport_dict = json.load(f)
 

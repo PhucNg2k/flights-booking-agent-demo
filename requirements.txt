@@ -8,3 +8,5 @@ openai
 elasticsearch 
 qdrant-client 
 tqdm
+selenium
+webdriver_manager

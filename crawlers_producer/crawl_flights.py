@@ -1,3 +1,4 @@
+from sys import version
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -9,6 +10,12 @@ import time
 from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import json
+
+
+from selenium.webdriver.chrome.options import Options
+
+#CHROMEDRIVER_PATH = "/Users/cybercs/Documents/Code/DemoProject/flights-booking-agent-demo/chromedriver-mac/chromedriver"
+
 producer = KafkaProducer(
         bootstrap_servers=['localhost:9092'],
         value_serializer=lambda x: json.dumps(x).encode('utf-8')
@@ -20,12 +27,22 @@ class WebCrawler:
         
     def initialize_driver(self):
         try:
-            chrome_options = webdriver.ChromeOptions()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
+            # chrome_options = webdriver.ChromeOptions()
+            # chrome_options.add_argument('--no-sandbox')
+            # chrome_options.add_argument('--disable-dev-shm-usage')
+            #chrome_options.add_argument('--headless')  # Chạy ẩn browser
+            #chrome_options.add_argument('--disable-gpu')
+            #chrome_options.add_argument('--window-size=1920,1080')
             
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            #service = Service(ChromeDriverManager().install())
+            #service = Service(ChromeDriverManager(version=CHROME_VERSION).install())
+            
+            #self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            chrome_options = Options()
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            
+            self.driver = webdriver.Chrome(options=chrome_options)
             return True
         except Exception as e:
             print(f"Failed to initialize driver: {str(e)}")
@@ -49,7 +66,8 @@ class WebCrawler:
 
             today = datetime.now()
             all_data = {}
-            print(today)
+            #print('Crawl date: ', today)
+            
             for i in range(7):  
                 current_date = today + timedelta(days=i)
                 date_str = current_date.strftime('%Y-%m-%d')
