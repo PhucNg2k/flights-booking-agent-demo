@@ -1,20 +1,18 @@
-from sys import version
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
 import time
 from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import json
 
+from selenium.webdriver.chrome.service import Service
 
-from selenium.webdriver.chrome.options import Options
-
-#CHROMEDRIVER_PATH = "/Users/cybercs/Documents/Code/DemoProject/flights-booking-agent-demo/chromedriver-mac/chromedriver"
+# Chrome for Testing paths
+CHROMEDRIVER_PATH = "/Users/cybercs/chrome-for-testing/chromedriver-mac-arm64/chromedriver"
+CHROME_BINARY_PATH = "/Users/cybercs/chrome-for-testing/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
 
 producer = KafkaProducer(
         bootstrap_servers=['localhost:9092'],
@@ -27,25 +25,28 @@ class WebCrawler:
         
     def initialize_driver(self):
         try:
-            # chrome_options = webdriver.ChromeOptions()
-            # chrome_options.add_argument('--no-sandbox')
-            # chrome_options.add_argument('--disable-dev-shm-usage')
-            #chrome_options.add_argument('--headless')  # Chạy ẩn browser
-            #chrome_options.add_argument('--disable-gpu')
-            #chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options = webdriver.ChromeOptions()
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            #chrome_options.add_argument("--headless=new")  # New headless Chrome
             
-            #service = Service(ChromeDriverManager().install())
-            #service = Service(ChromeDriverManager(version=CHROME_VERSION).install())
+            # Use Chrome for Testing binary
+            chrome_options.binary_location = CHROME_BINARY_PATH
             
-            #self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            chrome_options = Options()
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
+            # Use ChromeDriver for Testing
+            service = Service(CHROMEDRIVER_PATH)
             
-            self.driver = webdriver.Chrome(options=chrome_options)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # Set timeouts
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(10)
+            
             return True
         except Exception as e:
             print(f"Failed to initialize driver: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def start_crawling(self):
@@ -53,7 +54,6 @@ class WebCrawler:
             return None
             
         try:
-            
             max_retries = 3
             for attempt in range(max_retries):
                 try:
@@ -66,7 +66,8 @@ class WebCrawler:
 
             today = datetime.now()
             all_data = {}
-            #print('Crawl date: ', today)
+            first_day_flights = None  # Lưu dữ liệu flights của ngày đầu tiên có dữ liệu
+            first_day_date = None  # Lưu ngày đầu tiên có dữ liệu
             
             for i in range(7):  
                 current_date = today + timedelta(days=i)
@@ -78,37 +79,99 @@ class WebCrawler:
                 )
                 self.driver.execute_script(f"arguments[0].value = '{date_str}';", date_input)
                 time.sleep(1)  
+                
                 search_button = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn-filter[type="submit"]'))
                 )
-                
                 search_button.click()
                 time.sleep(10)
+                
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located((By.TAG_NAME, 'tbody'))
                     )
                     
                     data = self.get_crawl_data()
-                    for flight in data['data']:
-                        information = {
-                            'date':date_str,# ngày
-                            'scheduled_time':flight[0],# Giờ kế hoạch ví dụ: 16:35
-                            'updated_time':flight[1],# Giờ cập nhật ví dụ: 17:40
-                            'route':flight[2],# Chặng bay ví dụ: DAD-HAN
-                            'flight_id':flight[4],# Mã chuyến bay ví dụ: VJ528
-                            'counter':flight[5],# Quầy ví dụ: 21-28
-                            'gate':flight[6],# Cổng ví dụ: 7
-                            'status':flight[8]# Trạng thái: OPN/CLS
-                        }
-                        producer.send('flights',value=information)
-                    if data:
-                        all_data[date_str] = data
-                        print(data)
-                        print(f"Successfully collected data for {date_str}")
+                    
+                    if data and data.get('data'):
+                        valid_flights = 0
+                        flights_to_send = []  # Lưu danh sách flights hợp lệ
+                        
+                        for idx, flight in enumerate(data['data']):
+                            # Skip rows that don't have enough columns or contain "no flights" message
+                            if len(flight) < 9:
+                                if len(flight) == 1 and ('Không có lịch bay' in flight[0] or 'không có' in flight[0].lower()):
+                                    print(f"No flights available for {date_str}")
+                                continue
+                            
+                            # Validate that required fields are not empty
+                            if not flight[0] or not flight[4]:  # scheduled_time and flight_id are required
+                                continue
+                            
+                            try:
+                                information = {
+                                    'date':date_str,
+                                    'scheduled_time':flight[0],
+                                    'updated_time':flight[1] if len(flight) > 1 else '',
+                                    'route':flight[2] if len(flight) > 2 else '',
+                                    'flight_id':flight[4] if len(flight) > 4 else '',
+                                    'counter':flight[5] if len(flight) > 5 else '',
+                                    'gate':flight[6] if len(flight) > 6 else '',
+                                    'status':flight[8] if len(flight) > 8 else ''
+                                }
+                                producer.send('flights',value=information)
+                                flights_to_send.append(information)
+                                valid_flights += 1
+                            except (IndexError, KeyError) as e:
+                                print(f"Error processing flight: {str(e)}")
+                                continue
+                        
+                        if valid_flights > 0:
+                            # Lưu dữ liệu của ngày đầu tiên có dữ liệu
+                            if first_day_flights is None:
+                                first_day_flights = flights_to_send
+                                first_day_date = date_str
+                                print(f"Successfully collected {valid_flights} flights for {date_str} (saved as reference)")
+                            else:
+                                print(f"Successfully collected {valid_flights} flights for {date_str}")
+                            all_data[date_str] = data
+                        else:
+                            # Không có flights hợp lệ, sử dụng lại dữ liệu ngày đầu tiên
+                            if first_day_flights is not None:
+                                print(f"No valid flights for {date_str}, reusing data from {first_day_date}")
+                                for flight_info in first_day_flights:
+                                    # Cập nhật date cho ngày hiện tại
+                                    flight_info_copy = flight_info.copy()
+                                    flight_info_copy['date'] = date_str
+                                    producer.send('flights', value=flight_info_copy)
+                                print(f"Reused {len(first_day_flights)} flights from {first_day_date} for {date_str}")
+                            else:
+                                print(f"No flight data for {date_str} (no reference data available yet)")
+                    else:
+                        # Không có data, sử dụng lại dữ liệu ngày đầu tiên
+                        if first_day_flights is not None:
+                            print(f"No flight data for {date_str}, reusing data from {first_day_date}")
+                            for flight_info in first_day_flights:
+                                # Cập nhật date cho ngày hiện tại
+                                flight_info_copy = flight_info.copy()
+                                flight_info_copy['date'] = date_str
+                                producer.send('flights', value=flight_info_copy)
+                            print(f"Reused {len(first_day_flights)} flights from {first_day_date} for {date_str}")
+                        else:
+                            print(f"No flight data for {date_str} (no reference data available yet)")
                     
                 except TimeoutException:
-                    print(f"No data found for date {date_str}")
+                    # Timeout, sử dụng lại dữ liệu ngày đầu tiên
+                    if first_day_flights is not None:
+                        print(f"No data found for date {date_str}, reusing data from {first_day_date}")
+                        for flight_info in first_day_flights:
+                            # Cập nhật date cho ngày hiện tại
+                            flight_info_copy = flight_info.copy()
+                            flight_info_copy['date'] = date_str
+                            producer.send('flights', value=flight_info_copy)
+                        print(f"Reused {len(first_day_flights)} flights from {first_day_date} for {date_str}")
+                    else:
+                        print(f"No data found for date {date_str} (no reference data available yet)")
                     continue
 
                 time.sleep(2)  
@@ -117,6 +180,8 @@ class WebCrawler:
             
         except Exception as e:
             print(f"An error occurred: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
         finally:
             self.cleanup()
@@ -125,8 +190,6 @@ class WebCrawler:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                print('Starting data extraction...')
-                
                 WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, 'table.table.table-striped'))
                 )
@@ -137,9 +200,10 @@ class WebCrawler:
                 )
                 for header in header_elements:
                     try:
-                        headers.append(WebDriverWait(self.driver, 5).until(
+                        header_text = WebDriverWait(self.driver, 5).until(
                             EC.visibility_of(header)
-                        ).text.strip())
+                        ).text.strip()
+                        headers.append(header_text)
                     except:
                         continue
                 
@@ -163,6 +227,7 @@ class WebCrawler:
                                 row_data.append(cell_text)
                             except:
                                 row_data.append("")  
+                        
                         if row_data and any(row_data):  
                             data_rows.append(row_data)
                             
@@ -181,10 +246,9 @@ class WebCrawler:
             except Exception as e:
                 print(f"Attempt {attempt + 1} failed: {str(e)}")
                 if attempt == max_retries - 1:
-                    print("Max retries reached, returning None")
                     return None
                 time.sleep(2)  
-            return None
+        return None
     
     def cleanup(self):
         try:
@@ -193,7 +257,7 @@ class WebCrawler:
         except Exception as e:
             print(f"Error during cleanup: {str(e)}")
 
-url = "https://vietnamairport.vn/thong-tin-lich-bay"
+url = "https://acv.vn/thong-tin-lich-bay"
 crawler = WebCrawler(url)
 result = crawler.start_crawling()
 

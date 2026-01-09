@@ -18,8 +18,16 @@ Khởi chạy các dịch vụ phụ trợ:
 - Elasticsearch (9200)
 - Qdrant (6333)
 
+### Cài đặt ChromeDriver và Chrome for Testing (cho Crawler)
+Crawler sử dụng Chrome for Testing và ChromeDriver để crawl dữ liệu. Cài đặt như sau:
+
+
+```
+
+**Lưu ý:** Đảm bảo version ChromeDriver và Chrome for Testing khớp với version nhau. Cập nhật đường dẫn trong `crawlers_producer/crawl_flights.py` nếu cần.
+
 ### Yêu cầu hệ thống
-- Python 3.9+
+- Python 3.10
 - Java JDK 8+ (Spark yêu cầu)
 - Apache Spark (local) 3.5.x khuyến nghị
 - Google Chrome (cho Selenium) – WebDriver được quản lý tự động bởi `webdriver_manager`

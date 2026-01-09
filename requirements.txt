@@ -1,12 +1,31 @@
+# Python 3.9 / 3.10 ONLY
+
+# LlamaIndex (workflow era, early–mid 2024)
+llama-index==0.10.29
+llama-index-utils-workflow==0.1.1
+
+# OpenAI stack (2024 compatible)
+openai==1.12.0
+pydantic==1.10.13
+
+# Data / Infra
 pyspark==3.2.0
 kafka-python
 pymongo
+elasticsearch
+qdrant-client
 dateparser
-llama-index-utils-workflow
-llama-index
-openai 
-elasticsearch 
-qdrant-client 
 tqdm
-selenium
-webdriver_manager
+
+# UI / Automation (Pydantic v1 compatible)
+gradio==3.50.2
+selenium==4.10.0
+webdriver-manager
+
+# NLP
+nltk
+
+# HF
+huggingface_hub<0.21.0
+
+httpx>=0.24.1,<0.27

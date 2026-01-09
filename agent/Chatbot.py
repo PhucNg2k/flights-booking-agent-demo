@@ -26,13 +26,12 @@ from llama_index.core.workflow import (
     Event,
     Context,
     Workflow,
-    draw_all_possible_flows,
-    WorkflowCheckpointer
 )
+
+
 import utils
 import dateparser
 from llama_index.core.tools import FunctionTool
-from llama_index.core.agent import ReActAgent
 from llama_index.core.prompts import PromptTemplate
 from pymongo import MongoClient
 from pydantic import BaseModel
@@ -605,20 +604,62 @@ async def retrieve_regulation(user_query: str) -> str:
 
 nest_asyncio.apply()
 
+# def initialize_agent():
+#     tools = [
+#         FunctionTool.from_defaults(async_fn=prepare_input, name='Query_Prep', 
+#             description='Tool to generate a Query from user input.'),
+#         FunctionTool.from_defaults(async_fn=read_mongodb, name='MongoDB_Retriever',
+#             description='Tool to retrieve information from MongoDB database.'),
+#         FunctionTool.from_defaults(async_fn=submit_booking, name="SubmitBooking_Tool",
+#             description='Tool to submit booking information to MongoDB.'),
+#         FunctionTool.from_defaults(async_fn=retrieve_regulation, name='RegulationRAG_tool',
+#             description='Tool to retrieve general regulations for Air Travel.')
+#     ]
+    
+#     llm = OpenAI(model='gpt-3.5-turbo', logprobs=None, default_headers={})
+#     return OpenAIAgent.from_tools(tools, llm=llm, verbose=True, system_prompt=prompts.SYSTEM_PROMPT)
+
 def initialize_agent():
     tools = [
-        FunctionTool.from_defaults(async_fn=prepare_input, name='Query_Prep', 
-            description='Tool to generate a Query from user input.'),
-        FunctionTool.from_defaults(async_fn=read_mongodb, name='MongoDB_Retriever',
-            description='Tool to retrieve information from MongoDB database.'),
-        FunctionTool.from_defaults(async_fn=submit_booking, name="SubmitBooking_Tool",
-            description='Tool to submit booking information to MongoDB.'),
-        FunctionTool.from_defaults(async_fn=retrieve_regulation, name='RegulationRAG_tool',
-            description='Tool to retrieve general regulations for Air Travel.')
+        FunctionTool.from_defaults(
+            fn=lambda *args, **kwargs: None,
+            async_fn=prepare_input,
+            name='Query_Prep',
+            description='Tool to generate a Query from user input.'
+        ),
+        FunctionTool.from_defaults(
+            fn=lambda *args, **kwargs: None,
+            async_fn=read_mongodb,
+            name='MongoDB_Retriever',
+            description='Tool to retrieve information from MongoDB database.'
+        ),
+        FunctionTool.from_defaults(
+            fn=lambda *args, **kwargs: None,
+            async_fn=submit_booking,
+            name="SubmitBooking_Tool",
+            description='Tool to submit booking information to MongoDB.'
+        ),
+        FunctionTool.from_defaults(
+            fn=lambda *args, **kwargs: None,
+            async_fn=retrieve_regulation,
+            name='RegulationRAG_tool',
+            description='Tool to retrieve general regulations for Air Travel.'
+        ),
     ]
-    
-    llm = OpenAI(model='gpt-3.5-turbo', logprobs=None, default_headers={})
-    return OpenAIAgent.from_tools(tools, llm=llm, verbose=True, system_prompt=prompts.SYSTEM_PROMPT)
+
+    llm = OpenAI(
+        model='gpt-3.5-turbo',
+        logprobs=None,
+        default_headers={}
+    )
+
+    return OpenAIAgent.from_tools(
+        tools,
+        llm=llm,
+        verbose=True,
+        system_prompt=prompts.SYSTEM_PROMPT
+    )
+
 
 agent = initialize_agent()
 
