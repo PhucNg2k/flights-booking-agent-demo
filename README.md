@@ -137,7 +137,7 @@ Mở đường dẫn Gradio hiển thị trên console, nhập câu hỏi bằng
   - `MONGODB_HOST = 'mongodb://localhost:27017'`
 
 ### Ghi chú thêm
-- Nguồn dữ liệu lịch bay: `https://vietnamairport.vn/thong-tin-lich-bay`
+- Nguồn dữ liệu lịch bay: `https://acv.vn/thong-tin-lich-bay`
 - Map IATA: `iata_code/airline.json`, `iata_code/airport.json`, `iata_code/region_name.json` (được load trong Spark consumer).
 - MySQL (tùy chọn): Có script mẫu `ingest_data_consumer/consumer-mysql.py` và `ingest_data_consumer/init_db_mysql.py` nếu muốn ghi MySQL thay vì MongoDB.
 

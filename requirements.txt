@@ -1,8 +1,7 @@
 # Python 3.9 / 3.10 ONLY
 
 # LlamaIndex (workflow era, early–mid 2024)
-llama-index==0.10.29
-llama-index-utils-workflow==0.1.1
+llama-index==0.12
 
 # OpenAI stack (2024 compatible)
 openai==1.12.0
