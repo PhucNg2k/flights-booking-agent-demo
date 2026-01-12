@@ -111,8 +111,15 @@ class MongoEncoder(json.JSONEncoder):
 
 
 async def query_regulation(query: str, semantic_weight: float = 0.7, keyword_weight: float = 0.3) -> str:
-    qdrant_client = QdrantClient(QDRANT_HOST)
-    es = Elasticsearch(ELASTICSEARCH_HOST)
+    qdrant_client = QdrantClient(QDRANT_HOST, check_compatibility=False)
+    es = Elasticsearch(
+        ELASTICSEARCH_HOST,
+        request_timeout=30,
+        max_retries=3,
+        retry_on_timeout=True,
+        verify_certs=False,
+        ssl_show_warn=False
+    )
     embed_model = OpenAIEmbedding(model=EMBEDDING_MODEL)
     
     query_embedding = embed_model.get_text_embedding(query)
@@ -199,10 +206,10 @@ class MongoDBflow(Workflow):
             default_headers={},  
         )
     
-        await ctx.set('MONGO_DB', MONGO_DB)
-        await ctx.set('COLLECTION_NAME', COLLECTION_NAME)
-        await ctx.set('CONNECTION_STRING', CONNECTION_STRING)
-        await ctx.set('LLM', LLM)
+        await ctx.store.set('MONGO_DB', MONGO_DB)
+        await ctx.store.set('COLLECTION_NAME', COLLECTION_NAME)
+        await ctx.store.set('CONNECTION_STRING', CONNECTION_STRING)
+        await ctx.store.set('LLM', LLM)
 
         try:
             query_str = ev.query
@@ -214,7 +221,7 @@ class MongoDBflow(Workflow):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid query format: {query_str}") from e
 
-        await ctx.set('mongoDB_query', db_query)
+        await ctx.store.set('mongoDB_query', db_query)
 
         ctx.send_event(ConnectDB_Event(payload=''))
         ctx.send_event(QueryGenerationComplete_Event(payload=''))
@@ -231,17 +238,17 @@ class MongoDBflow(Workflow):
     @step
     async def connect_mongoClient(self, ctx: Context, ev: ConnectDB_Event) -> ConnectDBComplete_Event:
         try:
-            connection_string = await ctx.get('CONNECTION_STRING')
-            mongo_db = await ctx.get('MONGO_DB')
-            collection_name = await ctx.get('COLLECTION_NAME')
+            connection_string = await ctx.store.get('CONNECTION_STRING')
+            mongo_db = await ctx.store.get('MONGO_DB')
+            collection_name = await ctx.store.get('COLLECTION_NAME')
 
             client = MongoClient(connection_string)
-            await ctx.set('mongo_client' , client)
+            await ctx.store.set('mongo_client' , client)
 
             db = client.get_database(name=mongo_db)
             collection = db[collection_name]
 
-            await ctx.set('collection', collection)
+            await ctx.store.set('collection', collection)
             return ConnectDBComplete_Event(payload='Connect to database success')
         except Exception as e:
             raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
@@ -250,8 +257,8 @@ class MongoDBflow(Workflow):
         if (ctx.collect_events(ev, [ConnectDBComplete_Event, QueryGenerationComplete_Event]) is None):
             return None
         try:
-            collection = await ctx.get('collection')
-            mongoDB_query = await ctx.get('mongoDB_query')
+            collection = await ctx.store.get('collection')
+            mongoDB_query = await ctx.store.get('mongoDB_query')
 
             if isinstance(mongoDB_query, str):
                 mongoDB_query = eval(mongoDB_query)  # or json.loads(mongoDB_query)
@@ -287,7 +294,7 @@ class MongoDBflow(Workflow):
             print(final_query)
             cursor = collection.find(final_query)
             retrieved_data = cursor.to_list(length=None)
-            await ctx.set('retrieved_data', retrieved_data)
+            await ctx.store.set('retrieved_data', retrieved_data)
 
             return CleanUp(payload='Retrieving data success')
         except Exception as e:
@@ -296,12 +303,13 @@ class MongoDBflow(Workflow):
     def filter_item(self,item):
         keys_to_keep = ['flight_id', 'date', 'scheduled_time', 'departure_airport', 
                         'arrival_airport','counter','gate']
+        
         return {k: v for k, v in item.items() if k in keys_to_keep and v != ""}
 
     @step
     async def clean_up(self, ctx: Context, ev: CleanUp) -> StopEvent:
-        client = await ctx.get('mongo_client', None)
-        retrieved_data = await ctx.get('retrieved_data', None)
+        client = await ctx.store.get('mongo_client', None)
+        retrieved_data = await ctx.store.get('retrieved_data', None)
 
         if client:
             client.close()
@@ -331,10 +339,10 @@ class BookFlow(Workflow):
             default_headers={},  
         )
     
-        await ctx.set('MONGO_DB', MONGO_DB)
-        await ctx.set('COLLECTION_NAME', COLLECTION_NAME)
-        await ctx.set('CONNECTION_STRING', CONNECTION_STRING)
-        await ctx.set('LLM', LLM)
+        await ctx.store.set('MONGO_DB', MONGO_DB)
+        await ctx.store.set('COLLECTION_NAME', COLLECTION_NAME)
+        await ctx.store.set('CONNECTION_STRING', CONNECTION_STRING)
+        await ctx.store.set('LLM', LLM)
 
         try:
             print('Book flow')
@@ -348,7 +356,7 @@ class BookFlow(Workflow):
             raise ValueError(f"Invalid query format: {query_str}") from e
 
         #print(f'Initial query: {db_query}, type: {type(db_query)}')
-        await ctx.set('mongoDB_query', db_query)
+        await ctx.store.set('mongoDB_query', db_query)
 
         ctx.send_event(ConnectDB_Event(payload=''))
         ctx.send_event(QueryGenerationComplete_Event(payload=''))
@@ -356,17 +364,17 @@ class BookFlow(Workflow):
     @step
     async def connect_mongoClient(self, ctx: Context, ev: ConnectDB_Event) -> ConnectDBComplete_Event:
         try:
-            connection_string = await ctx.get('CONNECTION_STRING')
-            mongo_db = await ctx.get('MONGO_DB')
-            collection_name = await ctx.get('COLLECTION_NAME')
+            connection_string = await ctx.store.get('CONNECTION_STRING')
+            mongo_db = await ctx.store.get('MONGO_DB')
+            collection_name = await ctx.store.get('COLLECTION_NAME')
 
             client = MongoClient(connection_string)
-            await ctx.set('mongo_client' , client)
+            await ctx.store.set('mongo_client' , client)
 
             db = client.get_database(name=mongo_db)
             collection = db[collection_name]
 
-            await ctx.set('collection', collection)
+            await ctx.store.set('collection', collection)
             return ConnectDBComplete_Event(payload='Connect to database success')
         except Exception as e:
             raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
@@ -377,8 +385,8 @@ class BookFlow(Workflow):
         if ctx.collect_events(ev, [ConnectDBComplete_Event, QueryGenerationComplete_Event]) is None:
             return None
         try: 
-            collection = await ctx.get('collection', None)
-            mongoDB_query = await ctx.get('mongoDB_query', None)
+            collection = await ctx.store.get('collection', None)
+            mongoDB_query = await ctx.store.get('mongoDB_query', None)
             
             if collection is None or mongoDB_query is None :
                 return CleanUp(payload='Submit booking data failed: Missing required context data')
@@ -392,7 +400,7 @@ class BookFlow(Workflow):
                 return CleanUp(payload='There is no available flights with that flight id')
             else:
                 collection.insert_one(mongoDB_query)
-            await ctx.set('flight_info', flight_info)
+            await ctx.store.set('flight_info', flight_info)
             return CleanUp(payload='Submit booking data success')
         except Exception as e:
             print(f"Error during booking submission: {str(e)}")
@@ -400,9 +408,9 @@ class BookFlow(Workflow):
 
     @step
     async def clean_up(self, ctx: Context, ev: CleanUp) -> StopEvent:
-        client = await ctx.get('mongo_client', None)
-        submit_form = await ctx.get('mongoDB_query', None)
-        flight_info = await ctx.get('flight_info', "NO FLIGHTS AVAILABLE!")
+        client = await ctx.store.get('mongo_client', None)
+        submit_form = await ctx.store.get('mongoDB_query', None)
+        flight_info = await ctx.store.get('flight_info', "NO FLIGHTS AVAILABLE!")
 
         print(f'Booking flow : {submit_form}')
 
@@ -444,7 +452,7 @@ class GatherInformation(Workflow):
             logprobs=None,
             default_headers={},
         )
-        await ctx.set('LLM', LLM)
+        await ctx.store.set('LLM', LLM)
         #print(f'User input: {ev.query}')
         
         intent_classification = LLM.structured_predict(
@@ -453,7 +461,7 @@ class GatherInformation(Workflow):
             text=ev.query
         )
         
-        await ctx.set('Intent', intent_classification.intent)
+        await ctx.store.set('Intent', intent_classification.intent)
 
         print(f"Detected intent: {intent_classification.intent} with confidence: {intent_classification.confidence}")
         
@@ -465,7 +473,7 @@ class GatherInformation(Workflow):
     @step
     async def parse_userQuery(self, ctx: Context, ev: ParseInput_Event) -> QueryGeneration_Event:
         
-        intent = await ctx.get('Intent')
+        intent = await ctx.store.get('Intent')
         if intent == IntentType.QUERY:
             simplified_prompt = PromptTemplate(prompts.PARSE_PROMPTS_RETRIEVE)
             target_schema = FlightSchema
@@ -474,7 +482,7 @@ class GatherInformation(Workflow):
             target_schema = BookingSchema
 
         try:
-            llm = await ctx.get('LLM')
+            llm = await ctx.store.get('LLM')
             extracted_input = llm.structured_predict( target_schema, simplified_prompt, text=ev.payload)
             print(f"Extracted input: {extracted_input}")
             return QueryGeneration_Event(payload=extracted_input)
@@ -575,7 +583,7 @@ class GatherInformation(Workflow):
     @step
     async def query_output(self, ctx: Context, ev: QueryGenerationComplete_Event) -> StopEvent:
         query = ev.payload
-        intent = await ctx.get('Intent')
+        intent = await ctx.store.get('Intent')
         observation = f'Query: {query}, Intent: {intent.value}.'
         return StopEvent(result=observation)
 
@@ -644,11 +652,26 @@ def chat(message, history):
     except Exception as e:
         return f"Error: {str(e)}"
 
-demo = gr.ChatInterface(
-    fn=chat,
-    title="Flight Assistant",
-    description="Hãy nhập câu hỏi của bạn bên dưới:"
-)
+with gr.Blocks(css="""
+    .gradio-container {
+        max-width: 1400px !important;
+    }
+    .main {
+        max-width: 1400px !important;
+    }
+    .chatbot {
+        height: 600px !important;
+        min-height: 600px !important;
+    }
+    .chat-message {
+        max-height: none !important;
+    }
+""") as demo:
+    gr.ChatInterface(
+        fn=chat,
+        title="Flight Assistant",
+        description="Hãy nhập câu hỏi của bạn bên dưới:"
+    )
 
 if __name__ == "__main__":
     demo.launch()

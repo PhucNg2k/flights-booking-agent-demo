@@ -48,7 +48,7 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     return [embed_model.get_text_embedding(text) for text in texts]
 
 def index_to_qdrant(chunks: List[Dict], embeddings: List[List[float]], collection_name: str):
-    client = QdrantClient(QDRANT_HOST)
+    client = QdrantClient(QDRANT_HOST, check_compatibility=False)
     
     try:
         client.create_collection(
@@ -69,21 +69,51 @@ def index_to_qdrant(chunks: List[Dict], embeddings: List[List[float]], collectio
         )
 
 def index_to_elasticsearch(chunks: List[Dict], index_name: str):
-    es = Elasticsearch(ELASTICSEARCH_HOST)
+    # Configure Elasticsearch client for ES 8.x compatibility
+    # ES 8.x with security disabled still needs proper configuration
+    es = Elasticsearch(
+        ELASTICSEARCH_HOST,
+        request_timeout=30,
+        max_retries=3,
+        retry_on_timeout=True,
+        verify_certs=False,  # Since xpack.security.enabled=false
+        ssl_show_warn=False
+    )
     
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name)
+    # Check connection first
+    try:
+        info = es.info()
+        print(f"Connected to Elasticsearch {info['version']['number']}")
+    except Exception as e:
+        raise ConnectionError(f"Failed to connect to Elasticsearch at {ELASTICSEARCH_HOST}: {str(e)}")
+    
+    # Check if index exists and create if needed
+    try:
+        if not es.indices.exists(index=index_name):
+            es.indices.create(index=index_name)
+    except Exception as e:
+        print(f"Warning: Error checking/creating index: {str(e)}")
+        # Try to create anyway
+        try:
+            es.indices.create(index=index_name, ignore=400)  # ignore 400 if already exists
+        except Exception as create_error:
+            raise RuntimeError(f"Failed to create Elasticsearch index '{index_name}': {str(create_error)}")
 
+    # Index documents
     for chunk in chunks:
-        es.index(
-            index=index_name,
-            id=chunk["id"],
-            document={
-                "text": chunk["text"],
-                "filename": chunk["filename"],
-                "chunk_id": chunk["id"]
-            }
-        )
+        try:
+            es.index(
+                index=index_name,
+                id=chunk["id"],
+                document={
+                    "text": chunk["text"],
+                    "filename": chunk["filename"],
+                    "chunk_id": chunk["id"]
+                }
+            )
+        except Exception as e:
+            print(f"Warning: Failed to index chunk {chunk['id']}: {str(e)}")
+            continue
 
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
